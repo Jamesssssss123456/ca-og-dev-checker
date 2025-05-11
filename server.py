@@ -33,10 +33,9 @@ def fetch_from_axiom(ca):
         deployer = "未知"
 
         if 'ogToken' in html:
-            # crude parse: extract from js data blob
+            import json, re
             name_line = [line for line in html.splitlines() if 'ogToken' in line]
             if name_line:
-                import json, re
                 raw = re.search(r'"ogToken":({.*?})', name_line[0])
                 if raw:
                     obj = json.loads(raw.group(1))
@@ -58,11 +57,11 @@ def send_telegram_message(message: str):
         payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
         requests.post(url, data=payload)
     except Exception as e:
-        print("Telegram Error:", e)
+        print("Telegram Send Error:", e)
 
 @app.route("/")
 def home():
-    return "Solana CA Checker (GMGN + Axiom fallback) is live."
+    return "Solana CA Checker API (Safe for Render)"
 
 @app.route("/check")
 def check():
