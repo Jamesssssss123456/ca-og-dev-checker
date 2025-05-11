@@ -23,7 +23,7 @@ def check(update, context):
                 parse_mode="HTML"
             )
         else:
-            update.message.reply_text("⚠️ 查詢失敗，CA 可能無效或未部署")
+            update.message.reply_text("⚠️ 查詢失敗，CA 可能無效或 GMGN 無法讀取")
     except Exception as e:
         update.message.reply_text(f"❌ 發生錯誤：{e}")
 
