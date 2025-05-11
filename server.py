@@ -1,40 +1,39 @@
 from flask import Flask, request
 import requests
 import os
+import re
 
 app = Flask(__name__)
 
-HELIUS_API_KEY = "dbef4b36-c729-48f8-bc51-dfc9387a97a8"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def get_deployer_via_helius(token_address):
+def fetch_gmgn_info(ca_address):
     try:
-        url = f"https://mainnet.helius.xyz/v0/addresses/{token_address}/transactions?api-key={HELIUS_API_KEY}&limit=10"
-        res = requests.get(url)
-        res.raise_for_status()
-        txs = res.json()
-        if not txs or not isinstance(txs, list):
-            return None
-        tx = txs[-1]  # earliest transaction
-        deployer = tx.get("feePayer") or tx.get("signer") or None
-        return deployer
-    except Exception as e:
-        print("Helius Error:", e)
-        return None
+        url = f"https://gmgn.ai/sol/token/{ca_address}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        html = requests.get(url, headers=headers).text
 
-def get_other_tokens_by_wallet(wallet_address):
-    try:
-        url = f"https://public-api.solscan.io/account/tokens?account={wallet_address}&limit=50"
-        res = requests.get(url, headers={"accept": "application/json"})
-        tokens = []
-        if res.status_code == 200:
-            for t in res.json():
-                tokens.append(t.get("tokenAddress"))
-        return tokens
+        # Extract deployer address from HTML using pattern (may vary)
+        deployer_match = re.search(r'"deployerAddress":"([A-Za-z0-9]{32,44})"', html)
+        deployer = deployer_match.group(1) if deployer_match else "未知"
+
+        # Extract token name
+        name_match = re.search(r'"tokenName":"(.*?)"', html)
+        name = name_match.group(1) if name_match else "未知"
+
+        # Extract token symbol
+        symbol_match = re.search(r'"tokenSymbol":"(.*?)"', html)
+        symbol = symbol_match.group(1) if symbol_match else "未知"
+
+        return {
+            "name": name,
+            "symbol": symbol,
+            "deployer": deployer
+        }
     except Exception as e:
-        print("Solscan Token Lookup Error:", e)
-        return []
+        print("GMGN Error:", e)
+        return None
 
 def send_telegram_message(message: str):
     try:
@@ -46,7 +45,7 @@ def send_telegram_message(message: str):
 
 @app.route("/")
 def home():
-    return "Solana CA Checker (pum.fun version) is online."
+    return "Solana CA Checker (GMGN version) is live."
 
 @app.route("/check")
 def check():
@@ -54,21 +53,25 @@ def check():
     if not ca:
         return {"error": "Missing 'ca' parameter"}, 400
 
-    # Remove "pump" suffix if from pum.fun
+    # Strip "pump" suffix
     if ca.endswith("pump"):
         ca = ca[:-4]
 
-    deployer = get_deployer_via_helius(ca)
-    if not deployer:
-        send_telegram_message(f"⚠️ Helius 無法查詢 CA: {ca} 的部署者")
-        return {"error": "Helius 無法找到初始化交易"}, 404
+    info = fetch_gmgn_info(ca)
+    if not info:
+        send_telegram_message(f"❌ 無法從 GMGN 讀取 CA: {ca} 的資訊")
+        return {"error": "無法從 GMGN 讀取資料"}, 500
 
-    tokens = get_other_tokens_by_wallet(deployer)
-    msg = f"📡 <b>pum.fun CA 分析</b>\n\n📌 Token Mint: <code>{ca}</code>\n👨‍💻 Deployer: <code>{deployer}</code>\n\n📦 他名下的其他Token：\n"
-    for t in tokens:
-        msg += f"- {t}\n"
+    msg = f"📡 <b>pum.fun CA 分析</b>\n\n📌 Token Mint: <code>{ca}</code>\n🏷 名稱: <b>{info['name']} ({info['symbol']})</b>\n👨‍💻 Deployer: <code>{info['deployer']}</code>"
     send_telegram_message(msg)
-    return {"status": "ok", "deployer": deployer, "tokens": tokens}
+
+    return {
+        "status": "ok",
+        "ca": ca,
+        "name": info['name'],
+        "symbol": info['symbol'],
+        "deployer": info['deployer']
+    }
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
