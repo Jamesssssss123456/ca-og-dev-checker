@@ -16,7 +16,7 @@ def get_deployer_via_helius(token_address):
         txs = res.json()
         if not txs or not isinstance(txs, list):
             return None
-        tx = txs[-1]  # Earliest transaction (reverse order)
+        tx = txs[-1]  # earliest transaction
         deployer = tx.get("feePayer") or tx.get("signer") or None
         return deployer
     except Exception as e:
@@ -46,7 +46,7 @@ def send_telegram_message(message: str):
 
 @app.route("/")
 def home():
-    return "Solana CA Checker (Helius v2) is running."
+    return "Solana CA Checker (pum.fun version) is online."
 
 @app.route("/check")
 def check():
@@ -54,13 +54,17 @@ def check():
     if not ca:
         return {"error": "Missing 'ca' parameter"}, 400
 
+    # Remove "pump" suffix if from pum.fun
+    if ca.endswith("pump"):
+        ca = ca[:-4]
+
     deployer = get_deployer_via_helius(ca)
     if not deployer:
-        send_telegram_message(f"⚠️ 無法透過 Helius 查詢 CA: {ca} 的部署者")
+        send_telegram_message(f"⚠️ Helius 無法查詢 CA: {ca} 的部署者")
         return {"error": "Helius 無法找到初始化交易"}, 404
 
     tokens = get_other_tokens_by_wallet(deployer)
-    msg = f"📡 <b>SOL鏈 CA 分析</b>\n\n📌 Token Mint: <code>{ca}</code>\n👨‍💻 創建者 (Deployer): <code>{deployer}</code>\n\n📦 他持有的其他Token：\n"
+    msg = f"📡 <b>pum.fun CA 分析</b>\n\n📌 Token Mint: <code>{ca}</code>\n👨‍💻 Deployer: <code>{deployer}</code>\n\n📦 他名下的其他Token：\n"
     for t in tokens:
         msg += f"- {t}\n"
     send_telegram_message(msg)
