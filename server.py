@@ -1,38 +1,29 @@
 from flask import Flask, request
 import requests
 import os
-import re
 
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def fetch_gmgn_info(ca_address):
+def fetch_gmgn_info_from_api(ca_address):
     try:
-        url = f"https://gmgn.ai/sol/token/{ca_address}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        html = requests.get(url, headers=headers).text
-
-        # Extract deployer address from HTML using pattern (may vary)
-        deployer_match = re.search(r'"deployerAddress":"([A-Za-z0-9]{32,44})"', html)
-        deployer = deployer_match.group(1) if deployer_match else "未知"
-
-        # Extract token name
-        name_match = re.search(r'"tokenName":"(.*?)"', html)
-        name = name_match.group(1) if name_match else "未知"
-
-        # Extract token symbol
-        symbol_match = re.search(r'"tokenSymbol":"(.*?)"', html)
-        symbol = symbol_match.group(1) if symbol_match else "未知"
-
+        api_url = f"https://gmgn.ai/api/token/{ca_address}"
+        res = requests.get(api_url)
+        if res.status_code != 200:
+            return None
+        data = res.json()
+        name = data.get("tokenName", "未知")
+        symbol = data.get("tokenSymbol", "未知")
+        deployer = data.get("deployerAddress", "未知")
         return {
             "name": name,
             "symbol": symbol,
             "deployer": deployer
         }
     except Exception as e:
-        print("GMGN Error:", e)
+        print("GMGN API Error:", e)
         return None
 
 def send_telegram_message(message: str):
@@ -45,7 +36,7 @@ def send_telegram_message(message: str):
 
 @app.route("/")
 def home():
-    return "Solana CA Checker (GMGN version) is live."
+    return "Solana CA Checker (GMGN API version) is online."
 
 @app.route("/check")
 def check():
@@ -53,14 +44,13 @@ def check():
     if not ca:
         return {"error": "Missing 'ca' parameter"}, 400
 
-    # Strip "pump" suffix
     if ca.endswith("pump"):
         ca = ca[:-4]
 
-    info = fetch_gmgn_info(ca)
+    info = fetch_gmgn_info_from_api(ca)
     if not info:
-        send_telegram_message(f"❌ 無法從 GMGN 讀取 CA: {ca} 的資訊")
-        return {"error": "無法從 GMGN 讀取資料"}, 500
+        send_telegram_message(f"❌ 無法從 GMGN API 查詢 CA: {ca}")
+        return {"error": "無法從 GMGN API 查詢資料"}, 500
 
     msg = f"📡 <b>pum.fun CA 分析</b>\n\n📌 Token Mint: <code>{ca}</code>\n🏷 名稱: <b>{info['name']} ({info['symbol']})</b>\n👨‍💻 Deployer: <code>{info['deployer']}</code>"
     send_telegram_message(msg)
